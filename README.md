@@ -1,1 +1,1 @@
-# Bayesian
+# BayesianInferenceInversion
