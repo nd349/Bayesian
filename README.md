@@ -1,9 +1,9 @@
-# BayesianInferenceInversion\n
+# BayesianInferenceInversion
 
-<br>Main file: template.py<\br>
-<br>Config file: config.py<\br>
+<br>Main file: template.py
+<br>Config file: config.py
 
-<br>Following steps to start running the inversion code:<\br>
+<br>Following steps to start running the inversion code:
 <li>First change parameters in the config.py<\li>
 <li>Generate spatial correlation matrix<\li>
 <li>Update the read data script as per your input data format and make sure the data (H, X, Y, and covariance matrices) are in the correct format<\li>
