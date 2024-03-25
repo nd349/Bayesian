@@ -1,4 +1,4 @@
-# BayesianInferenceInversion
+# Bayesian Inference Inversion
 
 <br>Main file: template.py
 <br>Config file: config.py
