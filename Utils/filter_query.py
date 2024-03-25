@@ -86,6 +86,6 @@ def filter_emissions(files, time_domain):
             <pandas series>, <pandas dataframe>
     """
     emission_df = get_emission_domain_df(files)
-    filtered_df = emission_df[(emission_df['time']>=time_domain[0])&(emission_df['time']<time_domain[1])]
+    filtered_df = emission_df[(emission_df['time']>=time_domain[0])&(emission_df['time']<=time_domain[1])]
     return filtered_df['file'].values, filtered_df
 

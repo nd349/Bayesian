@@ -1,21 +1,21 @@
 #!/bin/bash
 
 #SBATCH
-#SBATCH --job-name=2020050200integrated_decayed
+#SBATCH --job-name=2020042400emulatorintegrated_decayed
+#SBATCH --partition=DEBUG
 #SBATCH -N 1      # nodes requested
 #SBATCH -n 1      # tasks requested
 #SBATCH -c 32      # cores requested
 #SBATCH --mem=102400  # memory in Mb
-#SBATCH -o logs/slurm_output_2020050200integrated_decayed_job%j.out  # send stdout to outfile
-#SBATCH -e logs/slurm_errfile_2020050200integrated_decayed_job%j.out  # send stderr to errfile
-#SBATCH -t 96:00:00  # time requested in hour:minute:second
+#SBATCH -o /home/disk/hermes/nd349/data/inversion/runs/logs/BKG_FootNet_base_no_dist_L1_withoutAD/integrated_decayed/2020042400.out  # send stdout to outfile
+#SBATCH -t 1:00:00  # time requested in hour:minute:second
 
 
 
-cd /home/disk/p/nd349/nikhil.dadheech/pointSources/Inversion/BEACON_Inv_python
-source /home/disk/p/nd349/anaconda3/etc/profile.d/conda.sh
+cd /home/disk/hermes/nd349/nikhil.dadheech/pointSources/Inversion/InversionEmulator/BEACON_emulator400400/
+source /home/disk/hermes/nd349/anaconda3/etc/profile.d/conda.sh
 
 
 
-conda activate stilt
-time python template.py $1 $2 $3
+conda activate torch
+time python template.py $1 $2 $3 $4

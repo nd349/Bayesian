@@ -2,25 +2,31 @@
 # @Author: nikhildadheech
 # @Date:   2022-08-23 12:59:27
 # @Last Modified by:   nikhildadheech
-# @Last Modified time: 2022-10-25 22:12:17
-
+# @Last Modified time: 2023-12-02 10:47:48
 
 import numpy as np
 from scipy.sparse import csc_matrix, csr_matrix, coo_matrix
 from Utils.readData import *
 from Utils.filter_query import *
 from Utils.reshape_matrices import *
+# import emulator.footnet_multiple as ftnet
 from config import *
 from joblib import Parallel, delayed
 from tqdm import tqdm
+from sklearn.model_selection import train_test_split
 
 print(f"Location: {location}")
+print(f"Emulator:", emulator)
+print(f"Emulator run:", emulator_run)
 print(f"Mode: {mode}")
 print(f"Device: {device}")
 print(f"Start date: {start_time}")
 print(f"End date: {end_time}")
+print(f"back_hours: {back_hours}")
+print(f"m_start: {m_start}")
+print(f"m_end: {m_end}")
 print(f"Inversion grid: {Inv_lonLim, Inv_latLim}")
-print(f"Posterior solutions output location: {output_posterior_file}")
+# print(f"Posterior solutions output location: {output_posterior_file}")
 print(f"Output directory: {output_directory}")
 print()
 
@@ -28,26 +34,52 @@ footprint_files = get_files(footprint_directory)
 emission_files = get_files(emission_directory)
 emission_files.sort()
 footprint_files.sort()
-# print(len(footprint_files), len(emission_files))
+print(len(footprint_files), len(emission_files))
 
 emission_filtered_files, emission_files_df = filter_emissions(emission_files, [m_start, m_end])
 foot_filtered_files, foot_files_df = filter_obs(footprint_files, Inv_lonLim, Inv_latLim, agl_domain='')
 
-domain_foot_files = list(foot_files_df[(foot_files_df['time']>=start_time)&(foot_files_df['time']<end_time)]['file'])
+foot_files_time_df = foot_files_df[(foot_files_df['time']>=start_time)&(foot_files_df['time']<end_time)]
+# print(foot_files_time_df)
 
 
-global H, Y, So_d, X, observation_dict, So
+global H_valid, Y_valid, validation_dict, H_check_valid, BKG_valid
+global H, Y, So_d, X, observation_dict, So, BKG
 
 global H_check
+
+if cross_validation:
+    domain_foot_files_train, domain_foot_files_validation = train_test_split(foot_files_time_df, test_size=cross_validation_fraction, random_state=42)
+    domain_foot_files = list(domain_foot_files_train['file'])
+    domain_foot_files_valid = list(domain_foot_files_validation['file'])
+    validation_dict = {}
+    H_valid = np.zeros((len(domain_foot_files_valid), date_range.shape[0]*m), dtype=np.float32)
+    H_check_valid = np.zeros((len(domain_foot_files_valid), date_range.shape[0]*m), dtype=np.float32)
+    Y_valid = np.zeros((len(domain_foot_files_valid), 1), dtype=np.float32)
+    BKG_valid = np.zeros((len(domain_foot_files_valid), 1), dtype=np.float32)
+    print("Training size:", len(domain_foot_files))
+    print("Validation size:", len(domain_foot_files_valid))
+    # Update the domain_foot_files
+    # Further, we also have to declare and load H_cross_validation and X_cross_validation
+    pass
+else:
+    print("Observations have not been kept out for the validation ....(everything is used in the training)")
+    domain_foot_files = list(foot_files_time_df['file'])
+    pass # No updates in domain_foot_files
+
+
+
 
 observation_dict = {}
 H = np.zeros((len(domain_foot_files), date_range.shape[0]*m), dtype=np.float32)
 H_check = np.zeros((len(domain_foot_files), date_range.shape[0]*m), dtype=np.float32)
 Y = np.zeros((len(domain_foot_files), 1), dtype=np.float32)
+BKG = np.zeros((len(domain_foot_files), 1), dtype=np.float32)
 So_d = np.zeros((len(domain_foot_files), 1), dtype=np.float32)
 X = np.zeros((date_range.shape[0]*m, 1), dtype=np.float32)
 nObs = So_d.shape[0]
 So = np.zeros((nObs, nObs), dtype=np.float32)
+receptor_list = []
 
 def get_background_error(data, bkg_conc_noaa, bkg_conc_nasa, bkg_conc_ameriflux, bkg_err_noaa, bkg_err_nasa, bkg_err_ameriflux):
     """
@@ -175,8 +207,10 @@ def fill_obs_data(idx, foot_file, mode='integrated'):
             
     """
 
-    global H, Y, So_d, observation_dict, H_check
+    global H, Y, So_d, observation_dict, H_check, BKG
+
     [__, timestamp, receptor_lon, receptor_lat, receptor_agl] = parse_obs_info(foot_file)
+    receptor = [clon, clat, timestamp, receptor_lon, receptor_lat, idx]
     year = int(timestamp[0:4])
     month = int(timestamp[4:6])
     day = int(timestamp[6:8])
@@ -200,40 +234,228 @@ def fill_obs_data(idx, foot_file, mode='integrated'):
     bkg_err_ameriflux = np.float32(np.array(foot_data['ameriflux_err'])[0])
     bkg_conc, bkg_error, source = get_background_error(foot_data, bkg_conc_noaa, bkg_conc_nasa, bkg_conc_ameriflux, bkg_err_noaa, bkg_err_nasa, bkg_err_ameriflux)
     Y[idx, 0] = np.float32(np.array(foot_data['co2'])[0]) - bkg_conc
+    BKG[idx, 0] = bkg_conc
+    # if Y[idx, 0] < 0:
+    #     print(foot_file, np.float32(np.array(foot_data['co2'])[0]), bkg_conc, source)
     obs_error = np.float32(np.array(foot_data['co2_err'])[0])
     mod_error = model_error[time_foot.hour]
     So_d[idx, 0] = obs_error**2+bkg_error**2+mod_error**2
-    if mode == 'integrated':
-        foot = np.float32(np.nansum(np.array(foot_data['foot']), axis=0))
-        H[idx, index*m:(index+1)*m] = flatten_2d_column(foot)
-    elif mode == 'integrated_average':
-        foot = np.float32(np.average(np.array(foot_data['foot']), axis=0))
-        # To verify the code (code testing): foot_check and H_check
-        foot_check = np.float32(np.nansum(np.array(foot_data['foot']), axis=0))
-        H_check[idx, index*m:(index+1)*m] = flatten_2d_column(foot_check)
+    if not emulator:
+        if mode == 'integrated':
+            foot = np.float32(np.nansum(np.array(foot_data['foot']), axis=0))[clat_index-200:clat_index+200, clon_index-200:clon_index+200]
+            H[idx, index*m:(index+1)*m] = flatten_2d_column(foot)
+        elif mode == 'integrated_average':
+            foot = np.float32(np.average(np.array(foot_data['foot']), axis=0))[clat_index-200:clat_index+200, clon_index-200:clon_index+200]
+            # To verify the code (code testing): foot_check and H_check
+            foot_check = np.float32(np.nansum(np.array(foot_data['foot']), axis=0))[clat_index-200:clat_index+200, clon_index-200:clon_index+200]
+            H_check[idx, index*m:(index+1)*m] = flatten_2d_column(foot_check)
 
-        # resolved_time_list = date_range[date_range<=time_foot][-foot.shape[0]:]
-        resolved_time_list = date_range[date_range<=time_foot][-(back_hours+1):]
-        for jdx, time_hour in enumerate(resolved_time_list):
-            m_index = time_dict[time_hour]
-            H[idx, m_index*m:(m_index+1)*m] = flatten_2d_column(foot)
-    elif mode == 'integrated_decayed':
-        # declare the weights
-        weight_list = create_weights()
-        foot = np.float32(np.nansum(np.array(foot_data['foot']), axis=0)) #compressed footprints
-        H_check[idx, index*m:(index+1)*m] = flatten_2d_column(foot)
-        resolved_time_list = date_range[date_range<=time_foot][-(back_hours+1):]
-        for jdx, time_hour in enumerate(resolved_time_list):
-            m_index = time_dict[time_hour]
-            H[idx, m_index*m:(m_index+1)*m] = flatten_2d_column(foot*weight_list[jdx])
-        # import pdb; pdb.set_trace()
-    elif mode == 'resolved':
+            # resolved_time_list = date_range[date_range<=time_foot][-foot.shape[0]:]
+            resolved_time_list = date_range[date_range<=time_foot][-(back_hours+1):]
+            for jdx, time_hour in enumerate(resolved_time_list):
+                m_index = time_dict[time_hour]
+                H[idx, m_index*m:(m_index+1)*m] = flatten_2d_column(foot)
+        elif mode == 'integrated_decayed':
+            # declare the weights
+            weight_list = create_weights()
+            foot = np.float32(np.nansum(np.array(foot_data['foot']), axis=0))[clat_index-200:clat_index+200, clon_index-200:clon_index+200] #compressed footprints
+            H_check[idx, index*m:(index+1)*m] = flatten_2d_column(foot)
+            resolved_time_list = date_range[date_range<=time_foot][-(back_hours+1):]
+            for jdx, time_hour in enumerate(resolved_time_list):
+                m_index = time_dict[time_hour]
+                H[idx, m_index*m:(m_index+1)*m] = flatten_2d_column(foot*weight_list[jdx])
+            # import pdb; pdb.set_trace()
+        elif mode == 'resolved':
+            foot = np.float32(np.array(foot_data['foot']))[:, clat_index-200:clat_index+200, clon_index-200:clon_index+200]
+            resolved_time_list = date_range[date_range<=time_foot][-foot.shape[0]:]
+            for jdx, time_hour in enumerate(resolved_time_list):
+                m_index = time_dict[time_hour]
+                H[idx, m_index*m:(m_index+1)*m] = flatten_2d_column(foot[jdx, :, :])
+    foot_data.close()
+    return receptor
+
+def readFootEmulator(receptor, emulator_run=emulator_run):
+    [clon, clat, timestamp, receptor_lon, receptor_lat, idx] = receptor
+    year = int(timestamp[0:4])
+    month = int(timestamp[4:6])
+    day = int(timestamp[6:8])
+    hour = int(timestamp[8:])
+    time_foot = datetime.datetime(year, month, day, hour)
+    index = time_dict[time_foot]
+
+    global H, H_check
+
+    if emulator_run:
+        pass
+    else:
+        file = f"{emulator_file_path}emulator_{timestamp}_{receptor_lon}_{receptor_lat}.nc"
+        foot_data = nc.Dataset(file)
         foot = np.float32(np.array(foot_data['foot']))
-        resolved_time_list = date_range[date_range<=time_foot][-foot.shape[0]:]
-        for jdx, time_hour in enumerate(resolved_time_list):
-            m_index = time_dict[time_hour]
-            H[idx, m_index*m:(m_index+1)*m] = flatten_2d_column(foot[jdx, :, :])
-    return
+        foot_data.close()
+        if mode == 'integrated':
+            H[idx, index*m:(index+1)*m] = flatten_2d_column(foot)
+        elif mode == 'integrated_average':
+            # Validation (not used in the modeling)
+            foot_step_avg = foot/back_hours
+            H_check[idx, index*m:(index+1)*m] = flatten_2d_column(foot)
+
+            # Used in modeling
+            resolved_time_list = date_range[date_range<=time_foot][-(back_hours+1):]
+            for jdx, time_hour in enumerate(resolved_time_list):
+                m_index = time_dict[time_hour]
+                H[idx, m_index*m:(m_index+1)*m] = flatten_2d_column(foot_step_avg)
+            pass
+        elif mode == 'integrated_decayed':
+            weight_list = create_weights()
+            # Validation (not used in the modeling)
+            H_check[idx, index*m:(index+1)*m] = flatten_2d_column(foot)
+
+            # Used in the modeling
+            resolved_time_list = date_range[date_range<=time_foot][-(back_hours+1):]
+            for jdx, time_hour in enumerate(resolved_time_list):
+                m_index = time_dict[time_hour]
+                H[idx, m_index*m:(m_index+1)*m] = flatten_2d_column(foot*weight_list[jdx])
+            pass
+        else:
+            raise Exception(f"Expected mode (in config.py) to be integrated, integrated_average, or integrated_decayed. Found mode to be {mode} instead.")
+
+def runFootEmulator(receptor_batch, index_list):
+    global H, H_check
+    model = ftnet.footnet_model()
+    model.load_weights(emulator_model_file)
+    footprints = model.get_footprint(receptor_batch)
+    for jdx, receptor in enumerate(receptor_batch):
+        foot = footprints[jdx].footprint
+        [clon, clat, timestamp, receptor_lon, receptor_lat] = receptor
+        idx = index_list[jdx]
+        year = int(timestamp[0:4])
+        month = int(timestamp[4:6])
+        day = int(timestamp[6:8])
+        hour = int(timestamp[8:])
+        time_foot = datetime.datetime(year, month, day, hour)
+        index = time_dict[time_foot]
+
+        if emulator_run and emulator:
+            if mode == 'integrated':
+                H[idx, index*m:(index+1)*m] = flatten_2d_column(foot)
+            elif mode == 'integrated_average':
+                # Validation (not used in the modeling)
+                foot_step_avg = foot/back_hours
+                H_check[idx, index*m:(index+1)*m] = flatten_2d_column(foot)
+
+                # Used in modeling
+                resolved_time_list = date_range[date_range<=time_foot][-(back_hours+1):]
+                for jdx, time_hour in enumerate(resolved_time_list):
+                    m_index = time_dict[time_hour]
+                    H[idx, m_index*m:(m_index+1)*m] = flatten_2d_column(foot_step_avg)
+
+            elif mode == 'integrated_decayed':
+                weight_list = create_weights()
+                # Validation (not used in the modeling)
+                H_check[idx, index*m:(index+1)*m] = flatten_2d_column(foot)
+
+                # Used in the modeling
+                resolved_time_list = date_range[date_range<=time_foot][-(back_hours+1):]
+                for jdx, time_hour in enumerate(resolved_time_list):
+                    m_index = time_dict[time_hour]
+                    H[idx, m_index*m:(m_index+1)*m] = flatten_2d_column(foot*weight_list[jdx])
+
+            else:
+                raise Exception(f"Expected mode (in config.py) to be integrated, integrated_average, or integrated_decayed. Found mode to be {mode} instead.")
+
+
+def fill_obs_validation(idx, foot_file, mode='integrated'):
+
+    global H_valid, Y_valid, validation_dict, BKG_valid
+
+    [__, timestamp, receptor_lon, receptor_lat, receptor_agl] = parse_obs_info(foot_file)
+    receptor = [clon, clat, timestamp, receptor_lon, receptor_lat, idx]
+    year = int(timestamp[0:4])
+    month = int(timestamp[4:6])
+    day = int(timestamp[6:8])
+    hour = int(timestamp[8:])
+    time_foot = datetime.datetime(year, month, day, hour)
+    index = time_dict[time_foot]
+    validation_dict[idx] = {
+        "time":time_foot,
+        "lon":float(receptor_lon),
+        "lat":float(receptor_lat),
+        "agl":float(receptor_agl)
+    }
+
+    foot_data = nc.Dataset(foot_file)
+    bkg_conc_noaa = np.float32(np.array(foot_data['bkg_co2_NOAA'])[0])
+    bkg_conc_nasa = np.float32(np.array(foot_data['bkg_co2_NASA'])[0])
+    bkg_conc_ameriflux = np.float32(np.array(foot_data['ameriflux_co2'])[0])
+    bkg_err_noaa = np.float32(np.array(foot_data['bkg_err_NOAA'])[0])
+    bkg_err_nasa = np.float32(np.array(foot_data['bkg_err_NASA'])[0])
+    bkg_err_ameriflux = np.float32(np.array(foot_data['ameriflux_err'])[0])
+    bkg_conc, bkg_error, source = get_background_error(foot_data, bkg_conc_noaa, bkg_conc_nasa, bkg_conc_ameriflux, bkg_err_noaa, bkg_err_nasa, bkg_err_ameriflux)
+    Y_valid[idx, 0] = np.float32(np.array(foot_data['co2'])[0]) - bkg_conc
+    BKG_valid[idx, 0] = bkg_conc
+
+    # H_valid
+    if emulator:
+        if not emulator_run:
+            file = f"{emulator_file_path}emulator_{timestamp}_{receptor_lon}_{receptor_lat}.nc"
+            foot_data = nc.Dataset(file)
+            foot = np.float32(np.array(foot_data['foot']))
+            if mode == 'integrated':
+                H_valid[idx, index*m:(index+1)*m] = flatten_2d_column(foot)
+            elif mode == 'integrated_average':
+                # Validation (not used in the modeling)
+                foot_step_avg = foot/back_hours
+                H_check_valid[idx, index*m:(index+1)*m] = flatten_2d_column(foot)
+
+                # Used in modeling
+                resolved_time_list = date_range[date_range<=time_foot][-(back_hours+1):]
+                for jdx, time_hour in enumerate(resolved_time_list):
+                    m_index = time_dict[time_hour]
+                    H_valid[idx, m_index*m:(m_index+1)*m] = flatten_2d_column(foot_step_avg)
+                pass
+            elif mode == 'integrated_decayed':
+                weight_list = create_weights()
+                # Validation (not used in the modeling)
+                H_check_valid[idx, index*m:(index+1)*m] = flatten_2d_column(foot)
+
+                # Used in the modeling
+                resolved_time_list = date_range[date_range<=time_foot][-(back_hours+1):]
+                for jdx, time_hour in enumerate(resolved_time_list):
+                    m_index = time_dict[time_hour]
+                    H_valid[idx, m_index*m:(m_index+1)*m] = flatten_2d_column(foot*weight_list[jdx])
+            pass
+    else:
+        if mode == 'integrated':
+            foot = np.float32(np.nansum(np.array(foot_data['foot']), axis=0))[clat_index-200:clat_index+200, clon_index-200:clon_index+200]
+            H_valid[idx, index*m:(index+1)*m] = flatten_2d_column(foot)
+        elif mode == 'integrated_average':
+            foot = np.float32(np.average(np.array(foot_data['foot']), axis=0))[clat_index-200:clat_index+200, clon_index-200:clon_index+200]
+            # To verify the code (code testing): foot_check and H_check
+            foot_check = np.float32(np.nansum(np.array(foot_data['foot']), axis=0))[clat_index-200:clat_index+200, clon_index-200:clon_index+200]
+            H_check_valid[idx, index*m:(index+1)*m] = flatten_2d_column(foot_check)
+
+            # resolved_time_list = date_range[date_range<=time_foot][-foot.shape[0]:]
+            resolved_time_list = date_range[date_range<=time_foot][-(back_hours+1):]
+            for jdx, time_hour in enumerate(resolved_time_list):
+                m_index = time_dict[time_hour]
+                H_valid[idx, m_index*m:(m_index+1)*m] = flatten_2d_column(foot)
+        elif mode == 'integrated_decayed':
+            # declare the weights
+            weight_list = create_weights()
+            foot = np.float32(np.nansum(np.array(foot_data['foot']), axis=0))[clat_index-200:clat_index+200, clon_index-200:clon_index+200] #compressed footprints
+            H_check_valid[idx, index*m:(index+1)*m] = flatten_2d_column(foot)
+            resolved_time_list = date_range[date_range<=time_foot][-(back_hours+1):]
+            for jdx, time_hour in enumerate(resolved_time_list):
+                m_index = time_dict[time_hour]
+                H_valid[idx, m_index*m:(m_index+1)*m] = flatten_2d_column(foot*weight_list[jdx])
+            # import pdb; pdb.set_trace()
+        elif mode == 'resolved':
+            foot = np.float32(np.array(foot_data['foot']))[:, clat_index-200:clat_index+200, clon_index-200:clon_index+200]
+            resolved_time_list = date_range[date_range<=time_foot][-foot.shape[0]:]
+            for jdx, time_hour in enumerate(resolved_time_list):
+                m_index = time_dict[time_hour]
+                H_valid[idx, m_index*m:(m_index+1)*m] = flatten_2d_column(foot[jdx, :, :])
+
 
 def fill_obs_parallel():
     """
@@ -245,7 +467,23 @@ def fill_obs_parallel():
             
     """
     print("Reading observation data ....")
-    OUTPUT = Parallel(n_jobs=-1, verbose=0, backend='threading')(delayed(fill_obs_data)(idx, foot_file, mode=mode) for idx, foot_file in tqdm(enumerate(domain_foot_files)))
+    OUTPUT = Parallel(n_jobs=1, verbose=0, backend='threading')(delayed(fill_obs_data)(idx, foot_file, mode=mode) for idx, foot_file in tqdm(enumerate(domain_foot_files)))
+    OUTPUT_valid = Parallel(n_jobs=1, verbose=0, backend='threading')(delayed(fill_obs_validation)(idx, foot_file, mode=mode) for idx, foot_file in tqdm(enumerate(domain_foot_files_valid)))
+    if emulator:
+        if emulator_run:
+            print("Running emulator to generate footprints ....")
+            receptor_batch = []
+            index_list = []
+            for receptor in OUTPUT:
+                receptor_batch.append(receptor[:-1])  # excluding idx
+                index_list.append(idx)
+                runFootEmulator(receptor_batch, index_list)
+
+        else:
+            print("Reading footprints from stored emulator footprints .....")
+            # print(OUTPUT)
+            emulator_OUTPUT = Parallel(n_jobs=1, verbose=0, backend='threading')(delayed(readFootEmulator)(receptor, emulator_run=emulator_run) for receptor in tqdm(OUTPUT))
+            # emulator_OUTPUT_valid = Parallel(n_jobs=-1, verbose=0, backend='threading')(delayed(readFootEmulator)(receptor, emulator_run=emulator_run) for receptor in tqdm(OUTPUT))
     return
 
 def load_prior_emissions():
@@ -259,14 +497,14 @@ def load_prior_emissions():
     """
     global X
     print("Loading emission data ....")
-    for ems_file in tqdm(emission_filtered_files):
+    for idx, ems_file in tqdm(enumerate(emission_filtered_files)):
         [_, year, month, day, hour] = parse_ems_info(ems_file)
         year = int(year)
         month = int(month)
         day = int(day)
         hour = int(hour)
         timestamp = datetime.datetime(year, month, day, hour)
-        ems_data = np.float32(np.array(nc.Dataset(ems_file)['flx_total']))
+        ems_data = np.float32(np.array(nc.Dataset(ems_file)['flx_total']))[clat_index-200:clat_index+200, clon_index-200:clon_index+200]
         ems_flattened = flatten_2d_column(ems_data)
         index = time_dict[timestamp]
         X[index*m:(index+1)*m, 0] = ems_flattened

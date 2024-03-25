@@ -2,7 +2,7 @@
 # @Author: nikhildadheech
 # @Date:   2022-08-25 12:14:22
 # @Last Modified by:   nikhildadheech
-# @Last Modified time: 2022-10-11 14:50:35
+# @Last Modified time: 2023-03-22 23:34:53
 
 
 import numpy as np
@@ -51,6 +51,7 @@ def build_temporal(tau_day, tau_hr, x_pri, m):
     tempB = np.zeros((nG))
     Sa_t = np.zeros((nEms, nEms))
     variance_temporal = np.zeros((nEms, nEms), dtype=np.float32)
+    lowBoundCount = 0
     for i in tqdm(range(nEms)):
         tempA = x_pri[i*m:(i+1)*m]
         variance_temporal[i,i] = np.var(tempA)
@@ -68,9 +69,12 @@ def build_temporal(tau_day, tau_hr, x_pri, m):
             if sig_val > lowBound:
                 Sa_t[i, j] = sig_val
                 Sa_t[j, i] = sig_val
-            # else:
+            else:
+                lowBoundCount += 1
+                # print(i, j)
             #     Sa_t[i, j] = 10**-7
             #     Sa_t[j, i] = 10**-7
+    print("lowBoundCount:", lowBoundCount)
     Sa_t = compute_covariance(Sa_t, variance_temporal, fsigma=fsigma)
     return Sa_t # need to convert this to covariance
 

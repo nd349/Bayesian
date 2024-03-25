@@ -2,13 +2,14 @@
 # @Author: nikhildadheech
 # @Date:   2022-08-28 19:19:58
 # @Last Modified by:   nikhildadheech
-# @Last Modified time: 2022-10-11 16:49:52
+# @Last Modified time: 2023-12-02 11:14:37
 
 import numpy as np
 import pandas as pd
 from scipy.sparse import csc_matrix, csr_matrix, coo_matrix
 from scipy.sparse.linalg import inv
-import torch, time
+import time
+# import torch
 import netCDF4 as nc
 from tqdm import tqdm
 from config import *
@@ -17,7 +18,7 @@ from fullCovariance.TemporalCovariance import *
 from Utils.HQ_HQHT import HQ, HQHT
 from Utils.reshape_matrices import *
 
-
+import datetime
 
 class InversionFullPrior():
 
@@ -26,7 +27,7 @@ class InversionFullPrior():
         object: <class>
         
     """
-    def __init__(self, H, X, Y, So):
+    def __init__(self, H, X, Y, So, observation_dict, BKG):
         """
         Initializing inversion module
 
@@ -39,6 +40,7 @@ class InversionFullPrior():
             None
         """
         self.mode = mode
+        self.emulator = emulator
         self.full_prior = full_prior
         self.sparse = sparse
         self.ems_uncert = ems_uncert
@@ -49,23 +51,29 @@ class InversionFullPrior():
         self.tau_len = tau_len
         self.fsigma = fsigma
         self.Sa_xy_file = Sa_xy_file
-        self.output_file = output_posterior_file
+        self.observation_dict = observation_dict
+        self.BKG = BKG
+        
         if not self.full_prior:
             raise Exception(f"diag_prior is expected to be True but found this instead: {diag_prior}")
 
         if self.sparse:
             print("Forming sparse matrices ....")
+            print("H")
             self.H = csc_matrix(H)
             self.H_array = H
+            print("X")
             self.X_pri = csc_matrix(X)
             self.X_pri_array = X
+            print("Y")
             self.Y = csc_matrix(Y)
+            self.Y_array = Y
             self.Sa_t = build_temporal(self.tau_day, self.tau_hr, self.X_pri_array, m) # numpy array
         else:
             self.H = H
             self.X_pri = X
             self.Y = Y
-            self.Sa_t = build_temporal(self.tau_day, self.tau_hr, self.X_pri_array, m)
+            self.Sa_t = build_temporal(self.tau_day, self.tau_hr, self.X_pri, m)
 
         # self.Sa_xy = self.form_spatial_covariance()
         self.Sa_xy = self.form_spatial_covariance(X) # csr array or csc matrix?
@@ -116,6 +124,14 @@ class InversionFullPrior():
         # Sa_xy = np.sqrt(self.fsigma)*(csr_matrix.dot(csr_matrix.sqrt(variance_xy), csr_matrix.dot(Sa_xy), csr_matrix.sqrt(variance_xy)))
         return Sa_xy_covariance
 
+    # def get_concentrations(self):
+    #     y_prior = np.dot(self.H_array, self.X_pri_array)
+    #     y_posterior = np.dot(self.H_array, self.original_X_hat)
+    #     return np.array(y_posterior), np.array(y_prior)
+
+    def get_concentrations(self, H, X):
+        return np.array(np.dot(H, X))
+
     def invert(self):
         """
         Invert for posterior solution using Bayesian inference method
@@ -125,7 +141,6 @@ class InversionFullPrior():
         returns:
             self.X_hat: <2-D array>
         """
-
         print("Inversion is starting .....")
         print(f"Size of H: {self.H.shape}")
         print(f"Size of X prior: {self.X_pri.shape}")
@@ -140,9 +155,12 @@ class InversionFullPrior():
             print("computing mismatch ....")
             mismatch = self.Y - csc_matrix.dot(self.H, self.X_pri)
             print("computing HQ ....")
-            KSa = HQ(self.H_array, self.Sa_t, self.Sa_xy)
+            KSa = HQ(self.H_array, self.Sa_t, self.Sa_xy, parallel=hq_parallel)
+            print(KSa)
             print("computing HQHT ....")
             G = HQHT(KSa, self.H_array, self.Sa_t, self.Sa_xy)
+            self.HPHT = G.copy()
+            print(G)
             print("computing gain matrix ....")
             G = G + self.So
             G = csc_matrix(G)
@@ -174,6 +192,94 @@ class InversionFullPrior():
         return X_hat
 
 
+    def save_concentrations(self, H_valid=None, Y_valid=None, validation_dict=None, BKG_valid=None):
+        """
+        Saving posterior solution
+
+        Arguments:
+            None
+        returns:
+            None
+        """
+
+        H_train = self.H_array
+        X_pri = self.X_pri_array
+        X_hat = self.original_X_hat
+
+        y_posterior_train = self.get_concentrations(H_train, X_hat)
+        y_prior_train = self.get_concentrations(H_train, X_pri)
+
+        # y_posterior_train, y_prior_train = self.get_concentrations()
+        year = str(start_time.year)
+        month = str(start_time.month)
+        day = str(start_time.day)
+        
+
+        if len(month) == 1:
+            month = "0"+month
+        if len(day) == 1:
+            day = "0"+day
+        
+
+        if emulator:
+            conc_file = f"{output_directory}emulator_observations_prior_posterior_{year}x{month}x{day}.nc"
+        else:
+            conc_file = f"{output_directory}STILT_observations_prior_posterior_{year}x{month}x{day}.nc"
+
+        conc_nc = nc.Dataset(conc_file, "w", format="NETCDF4")
+        conc_nc.createDimension("nobs", self.Y.shape[0])
+        obs_prior_train = conc_nc.createVariable("obs_prior_train", "f8", ("nobs"))
+        obs_posterior_train = conc_nc.createVariable("obs_posterior_train", "f8", ("nobs"))
+        obs_actual_train = conc_nc.createVariable("obs_actual_train", "f8", ("nobs"))
+
+        obs_prior_train[:] = y_prior_train
+        obs_posterior_train[:] = y_posterior_train
+        obs_actual_train[:] = self.Y_array
+
+        obs_year = conc_nc.createVariable("obs_year", "f8", ("nobs"))
+        obs_month = conc_nc.createVariable("obs_month", "f8", ("nobs"))
+        obs_day = conc_nc.createVariable("obs_day", "f8", ("nobs"))
+        obs_hour = conc_nc.createVariable("obs_hour", "f8", ("nobs"))
+
+        obs_lats = conc_nc.createVariable("obs_lat_train", "f8", ("nobs"))
+        obs_lons = conc_nc.createVariable("obs_lon_train", "f8", ("nobs"))
+
+        obs_year[:] = [datetime.datetime.strftime(term['time'], '%Y%m%d%H')[:4] for term in list(self.observation_dict.values())]
+        obs_month[:] = [datetime.datetime.strftime(term['time'], '%Y%m%d%H')[4:6] for term in list(self.observation_dict.values())]
+        obs_day[:] = [datetime.datetime.strftime(term['time'], '%Y%m%d%H')[6:8] for term in list(self.observation_dict.values())]
+        obs_hour[:] = [datetime.datetime.strftime(term['time'], '%Y%m%d%H')[8:] for term in list(self.observation_dict.values())]
+
+        obs_lats[:] = [term['lat'] for term in list(self.observation_dict.values())]
+        obs_lons[:] = [term['lon'] for term in list(self.observation_dict.values())]
+
+        conc_nc.createVariable("background_train", "f8", ("nobs"))[:] = self.BKG
+
+        conc_nc.createVariable("HPHT", "f8", ("nobs", "nobs"))[:, :] = self.HPHT
+        conc_nc.createVariable("So", "f8", ("nobs", "nobs"))[:, :] = self.So.toarray()
+
+
+        # Cross validation
+        if cross_validation:
+            y_posterior_valid = self.get_concentrations(H_valid, X_hat)
+            y_prior_valid = self.get_concentrations(H_valid, X_pri)
+
+            conc_nc.createDimension("nobs_valid", Y_valid.shape[0])
+            conc_nc.createDimension("info", 1)
+            conc_nc.createVariable("obs_prior_valid", "f8", ("nobs_valid"))[:] = y_prior_valid
+            conc_nc.createVariable("obs_posterior_valid", "f8", ("nobs_valid"))[:] = y_posterior_valid
+            conc_nc.createVariable("obs_actual_valid", "f8", ("nobs_valid"))[:] = Y_valid
+
+            conc_nc.createVariable("obs_lat_valid", "f8", ("nobs_valid"))[:] = [term['lat'] for term in list(validation_dict.values())]
+            conc_nc.createVariable("obs_lon_valid", "f8", ("nobs_valid"))[:] = [term['lon'] for term in list(validation_dict.values())]
+            conc_nc.createVariable("cross_validation_fraction", "f8", ("info"))[:] = cross_validation_fraction
+
+            conc_nc.createVariable("background_valid", "f8", ("nobs_valid"))[:] = BKG_valid
+
+
+        conc_nc.close()
+        print(f"{conc_file} has been saved ....")
+
+
     def save_solution(self):
         """
         Saving posterior solution
@@ -184,6 +290,7 @@ class InversionFullPrior():
             None
         """
         X_hat = self.X_hat
+        # y_posterior, y_prior = self.get_concentrations()
         X_hat_grid = np.zeros((int(X_hat.shape[0]/m), nrow, ncol))
         solution_date_range = pd.date_range(start=start_time, end=end_time-datetime.timedelta(hours=1), freq='1h')
         
@@ -193,6 +300,50 @@ class InversionFullPrior():
 
         print("Saving output at:", output_directory)
         
+        # year = str(start_time.year)
+        # month = str(start_time.month)
+        # day = str(start_time.day)
+
+        # if len(month) == 1:
+        #     month = "0"+month
+        # if len(day) == 1:
+        #     day = "0"+day
+        
+
+        # if emulator:
+        #     conc_file = f"{output_directory}emulator_observations_prior_posterior_{year}x{month}x{day}.nc"
+        # else:
+        #     conc_file = f"{output_directory}STILT_observations_prior_posterior_{year}x{month}x{day}.nc"
+
+        # conc_nc = nc.Dataset(conc_file, "w", format="NETCDF4")
+        # conc_nc.createDimension("nobs", self.Y.shape[0])
+        # obs_prior = conc_nc.createVariable("obs_prior", "f8", ("nobs"))
+        # obs_posterior = conc_nc.createVariable("obs_posterior", "f8", ("nobs"))
+        # obs_actual = conc_nc.createVariable("obs_actual", "f8", ("nobs"))
+
+        # obs_prior[:] = y_prior
+        # obs_posterior[:] = y_posterior
+        # obs_actual[:] = self.Y_array
+
+        # obs_year = conc_nc.createVariable("obs_year", "f8", ("nobs"))
+        # obs_month = conc_nc.createVariable("obs_month", "f8", ("nobs"))
+        # obs_day = conc_nc.createVariable("obs_day", "f8", ("nobs"))
+        # obs_hour = conc_nc.createVariable("obs_hour", "f8", ("nobs"))
+
+        # obs_lats = conc_nc.createVariable("obs_lat", "f8", ("nobs"))
+        # obs_lons = conc_nc.createVariable("obs_lon", "f8", ("nobs"))
+
+        # obs_year[:] = [datetime.datetime.strftime(term['time'], '%Y%m%d%H')[:4] for term in list(self.observation_dict.values())]
+        # obs_month[:] = [datetime.datetime.strftime(term['time'], '%Y%m%d%H')[4:6] for term in list(self.observation_dict.values())]
+        # obs_day[:] = [datetime.datetime.strftime(term['time'], '%Y%m%d%H')[6:8] for term in list(self.observation_dict.values())]
+        # obs_hour[:] = [datetime.datetime.strftime(term['time'], '%Y%m%d%H')[8:] for term in list(self.observation_dict.values())]
+
+        # obs_lats[:] = [term['lat'] for term in list(self.observation_dict.values())]
+        # obs_lons[:] = [term['lon'] for term in list(self.observation_dict.values())]
+
+        # conc_nc.close()
+        # print(f"{conc_file} has been saved ....")
+
         for idx, timestamp in tqdm(enumerate(solution_date_range)):
             year = str(timestamp.year)
             month = str(timestamp.month)
@@ -205,7 +356,10 @@ class InversionFullPrior():
             if len(hour) == 1:
                 hour = '0'+hour
             timestamp = f"{year}{month}{day}{hour}"
-            file = f"{output_directory}{location}_{year}x{month}x{day}x{hour}.ncdf"
+            if emulator:    
+                file = f"{output_directory}emulator_posterior_{location}_{year}x{month}x{day}x{hour}.ncdf"
+            else:
+                file = f"{output_directory}STILT_posterior_{location}_{year}x{month}x{day}x{hour}.ncdf"
             flux = X_hat_grid[idx, :, :]
             # print(file)
 
@@ -214,9 +368,10 @@ class InversionFullPrior():
             out_nc.createDimension("lat", nrow)
             out_nc.createDimension("lon", ncol)
             out_nc.createDimension("info", 1)
+            
             lat = out_nc.createVariable("lat", "f8", ("lat",))
             lon = out_nc.createVariable("lon", "f8", ("lon",))
-
+            
             lat[:] = lats
             lon[:] = lons
             
