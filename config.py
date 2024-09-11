@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 # @Author: nikhildadheech
 # @Date:   2022-08-23 12:37:29
-# @Last Modified by:   nikhildadheech
-# @Last Modified time: 2024-03-07 20:07:47
+# @Last Modified by:   nd349
+# @Last Modified time: 2024-09-10 16:44:13
 
 import datetime # ; import time
 import numpy as np
@@ -23,7 +23,6 @@ else:
 emulator = True
 emulator_run = False
 
-
 location = job.upper()
 back_hours = 36
 diag_prior = False
@@ -37,14 +36,14 @@ cross_validation_fraction = 0.15
 # Directories and files
 footprint_directory = "/home/disk/hermes/data/footprints/BEACO2N/obs/"
 # emulator_file_path = "/home/disk/hermes/taihe/footnet_test/noAD850/emulatorMSE/"
-emulator_file_path = "/home/disk/hermes/taihe/footnet_test/noAD850/emulatorL1/"
+emulator_file_path = "/home/disk/hermes2/nd349/data/footprints/BEACON_BARNETT_non_distance_withoutAD_baseModel_UNet_log_L1_relu/"
 emission_directory = "/home/disk/hermes/data/emissions/BEACO2N/"
-emulator_model_file = '/data/Unet_checkpt_0.58_mixed.h5'
+# emulator_model_file = '/data/Unet_checkpt_0.58_mixed.h5'
 
 if emulator:
-	output_directory = f"/home/disk/hermes/nd349/data/inversion/posterior/BEACON/BKG_FootNet_base_no_dist_L1_withoutAD/{mode}/"
+	output_directory = f"/home/disk/hermes/nd349/data/inversion/posterior/BEACON/FootNet_off_diag_Sa_xy/FootNet_withoutAD_no_distL1/{mode}/"
 else:
-	output_directory = f"/home/disk/hermes/nd349/data/inversion/posterior/BEACON/STILT_posterior_BEACON_BKG/{mode}/"
+	output_directory = f"/home/disk/hermes/nd349/data/inversion/posterior/BEACON/STILT_off_diag_Sa_xy/{mode}/"
 
 if not os.path.exists(output_directory):
 	raise Exception(f"The output_directory: {output_directory} does not exist ....")

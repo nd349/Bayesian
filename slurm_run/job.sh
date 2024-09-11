@@ -1,14 +1,14 @@
 #!/bin/bash
 
 #SBATCH
-#SBATCH --job-name=2020042400emulatorintegrated_decayed
-#SBATCH --partition=DEBUG
+#SBATCH --job-name=2020020200emulatorintegrated_decayed
+#SBATCH --partition=HERMES
 #SBATCH -N 1      # nodes requested
 #SBATCH -n 1      # tasks requested
 #SBATCH -c 32      # cores requested
 #SBATCH --mem=102400  # memory in Mb
-#SBATCH -o /home/disk/hermes/nd349/data/inversion/runs/logs/BKG_FootNet_base_no_dist_L1_withoutAD/integrated_decayed/2020042400.out  # send stdout to outfile
-#SBATCH -t 1:00:00  # time requested in hour:minute:second
+#SBATCH -o /home/disk/hermes/nd349/data/inversion/runs/logs/FootNet_off_diag_Sa_xy/FootNet_withoutAD_no_distL1/integrated_decayed/2020020200.out  # send stdout to outfile
+#SBATCH -t 24:00:00  # time requested in hour:minute:second
 
 
 

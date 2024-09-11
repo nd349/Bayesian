@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 # @Author: nikhildadheech
 # @Date:   2022-08-23 12:37:29
-# @Last Modified by:   nikhildadheech
-# @Last Modified time: 2024-03-07 20:08:01
+# @Last Modified by:   nd349
+# @Last Modified time: 2024-09-10 16:44:41
 
 import os
 from os import listdir
@@ -47,7 +47,7 @@ def get_files(directory, extension=""):
     files = [directory+file for file in files]
     return files
 
-files = get_files(f"/home/disk/hermes/nd349/data/inversion/posterior/BEACON/BKG_FootNet_base_no_dist_L1_withoutAD/{mode}/", extension=".ncdf")
+files = get_files(f"/home/disk/hermes/nd349/data/inversion/posterior/BEACON/FootNet_off_diag_Sa_xy/FootNet_withoutAD_no_distL1/{mode}/", extension=".ncdf")
 files = set([val.split("_")[-1][:-8] for val in files])
 # print(files)
 
@@ -92,7 +92,7 @@ def create_submission_bash(date, term, node=''):
             else:
                 file.writelines(f"#SBATCH --partition=HERMES\n")
         else:
-            file.writelines(f"#SBATCH --partition=DEBUG\n")
+            file.writelines(f"#SBATCH --partition=HERMES\n")
         file.writelines("#SBATCH -N 1      # nodes requested\n")
         file.writelines("#SBATCH -n 1      # tasks requested\n")
         file.writelines("#SBATCH -c 32      # cores requested\n")
@@ -100,11 +100,11 @@ def create_submission_bash(date, term, node=''):
             file.writelines(f"#SBATCH --nodelist={node}      # nodes requested\n")
         file.writelines("#SBATCH --mem=102400  # memory in Mb\n")
         if emulator:
-            file.writelines(f"#SBATCH -o /home/disk/hermes/nd349/data/inversion/runs/logs/BKG_FootNet_base_no_dist_L1_withoutAD/{mode}/{date}.out  # send stdout to outfile\n")
+            file.writelines(f"#SBATCH -o /home/disk/hermes/nd349/data/inversion/runs/logs/FootNet_off_diag_Sa_xy/FootNet_withoutAD_no_distL1/{mode}/{date}.out  # send stdout to outfile\n")
         else:
-            file.writelines(f"#SBATCH -o /home/disk/hermes/nd349/data/inversion/runs/logs/STILT/{mode}/{date}.out  # send stdout to outfile\n")
+            file.writelines(f"#SBATCH -o /home/disk/hermes/nd349/data/inversion/runs/logs/STILT_off_diag_Sa_xy/{mode}/{date}.out  # send stdout to outfile\n")
         # file.writelines(f"#SBATCH -e /home/disk/hermes/nd349/data/inversion/runs/logs/slurm_errfile_{jobname}.out  # send stderr to errfile\n")
-        file.writelines("#SBATCH -t 1:00:00  # time requested in hour:minute:second\n")
+        file.writelines("#SBATCH -t 24:00:00  # time requested in hour:minute:second\n")
         file.writelines("\n\n\n")
         file.writelines("cd /home/disk/hermes/nd349/nikhil.dadheech/pointSources/Inversion/InversionEmulator/BEACON_emulator400400/\n")
         file.writelines("source /home/disk/hermes/nd349/anaconda3/etc/profile.d/conda.sh\n")

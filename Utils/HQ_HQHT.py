@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 # @Author: nikhildadheech
 # @Date:   2022-08-28 19:28:02
-# @Last Modified by:   nikhildadheech
-# @Last Modified time: 2022-08-29 16:38:58
+# @Last Modified by:   nd349
+# @Last Modified time: 2024-09-10 17:11:27
 
 
 import time
@@ -98,7 +98,7 @@ class computeHQ():
         self.HQ[:, temp-counter:temp] = csc_matrix.dot(csc_matrix(HQsum), E).toarray()
 
     def computeHQParallel(self):
-        OUTPUT = Parallel(n_jobs=-1, verbose=0, backend='threading')(delayed(self.computeHQthread)(i) for i in tqdm(range(self.q)))
+        OUTPUT = Parallel(n_jobs=64, verbose=10, backend='threading')(delayed(self.computeHQthread)(i) for i in tqdm(range(self.q)))
 
 
 def HQ(H, D, E, parallel=True):

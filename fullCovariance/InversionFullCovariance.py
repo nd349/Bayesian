@@ -2,7 +2,7 @@
 # @Author: nikhildadheech
 # @Date:   2022-08-28 19:19:58
 # @Last Modified by:   nikhildadheech
-# @Last Modified time: 2023-12-02 11:14:37
+# @Last Modified time: 2024-07-11 15:00:04
 
 import numpy as np
 import pandas as pd
@@ -120,8 +120,9 @@ class InversionFullPrior():
         variance_xy = csc_matrix(variance_xy)
         variance_xy_sqrt = csc_matrix.sqrt(variance_xy)
         print("Computing covariance matrix")
-        Sa_xy_covariance = np.sqrt(self.fsigma)*(variance_xy_sqrt.multiply(Sa_xy.multiply(variance_xy_sqrt)))
+        # Sa_xy_covariance = np.sqrt(self.fsigma)*(variance_xy_sqrt.multiply(Sa_xy.multiply(variance_xy_sqrt)))
         # Sa_xy = np.sqrt(self.fsigma)*(csr_matrix.dot(csr_matrix.sqrt(variance_xy), csr_matrix.dot(Sa_xy), csr_matrix.sqrt(variance_xy)))
+        Sa_xy_covariance = np.sqrt(self.fsigma)*csc_matrix.dot(variance_xy_sqrt, csc_matrix.dot(Sa_xy, variance_xy_sqrt))
         return Sa_xy_covariance
 
     # def get_concentrations(self):
