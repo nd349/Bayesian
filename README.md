@@ -3,6 +3,7 @@
 <br>Main file: template.py
 <br>Config file: config.py
 <br>Data file: Utils.getData.py
+<br>Slurm file: slurm_run/slurm.py
 
 <br>Following steps to start running the inversion code:
 <li>First change parameters in the config.py
