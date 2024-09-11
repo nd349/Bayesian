@@ -34,16 +34,15 @@ cross_validation = True
 cross_validation_fraction = 0.15
 
 # Directories and files
-footprint_directory = "/home/disk/hermes/data/footprints/BEACO2N/obs/"
-# emulator_file_path = "/home/disk/hermes/taihe/footnet_test/noAD850/emulatorMSE/"
-emulator_file_path = "/home/disk/hermes2/nd349/data/footprints/BEACON_BARNETT_non_distance_withoutAD_baseModel_UNet_log_L1_relu/"
-emission_directory = "/home/disk/hermes/data/emissions/BEACO2N/"
-# emulator_model_file = '/data/Unet_checkpt_0.58_mixed.h5'
+footprint_directory = PATH
+emulator_file_path = PATH
+emission_directory = PATH
+# emulator_model_file = PATH
 
 if emulator:
-	output_directory = f"/home/disk/hermes/nd349/data/inversion/posterior/BEACON/FootNet_off_diag_Sa_xy/FootNet_withoutAD_no_distL1/{mode}/"
+	output_directory = PATH
 else:
-	output_directory = f"/home/disk/hermes/nd349/data/inversion/posterior/BEACON/STILT_off_diag_Sa_xy/{mode}/"
+	output_directory = PATH
 
 if not os.path.exists(output_directory):
 	raise Exception(f"The output_directory: {output_directory} does not exist ....")
@@ -142,7 +141,7 @@ for idx, value in enumerate(date_range):
     time_dict[value] = idx
 
 ## Emulator parameters
-HRR_lon_lat_npz = "data/HRRR_lon_lat.npz"
+HRR_lon_lat_npz = PATH
 
 
 

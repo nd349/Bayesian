@@ -47,7 +47,7 @@ def get_files(directory, extension=""):
     files = [directory+file for file in files]
     return files
 
-files = get_files(f"/home/disk/hermes/nd349/data/inversion/posterior/BEACON/FootNet_off_diag_Sa_xy/FootNet_withoutAD_no_distL1/{mode}/", extension=".ncdf")
+files = get_files(PATH, extension=".ncdf")
 files = set([val.split("_")[-1][:-8] for val in files])
 # print(files)
 
@@ -100,16 +100,16 @@ def create_submission_bash(date, term, node=''):
             file.writelines(f"#SBATCH --nodelist={node}      # nodes requested\n")
         file.writelines("#SBATCH --mem=102400  # memory in Mb\n")
         if emulator:
-            file.writelines(f"#SBATCH -o /home/disk/hermes/nd349/data/inversion/runs/logs/FootNet_off_diag_Sa_xy/FootNet_withoutAD_no_distL1/{mode}/{date}.out  # send stdout to outfile\n")
+            file.writelines(f"#SBATCH -o PATH  # send stdout to outfile\n")
         else:
-            file.writelines(f"#SBATCH -o /home/disk/hermes/nd349/data/inversion/runs/logs/STILT_off_diag_Sa_xy/{mode}/{date}.out  # send stdout to outfile\n")
+            file.writelines(f"#SBATCH -o PATH  # send stdout to outfile\n")
         # file.writelines(f"#SBATCH -e /home/disk/hermes/nd349/data/inversion/runs/logs/slurm_errfile_{jobname}.out  # send stderr to errfile\n")
         file.writelines("#SBATCH -t 24:00:00  # time requested in hour:minute:second\n")
         file.writelines("\n\n\n")
-        file.writelines("cd /home/disk/hermes/nd349/nikhil.dadheech/pointSources/Inversion/InversionEmulator/BEACON_emulator400400/\n")
-        file.writelines("source /home/disk/hermes/nd349/anaconda3/etc/profile.d/conda.sh\n")
+        file.writelines("cd PATH\n")
+        file.writelines("source PATH\n")
         file.writelines("\n\n\n")
-        file.writelines("conda activate torch\n")
+        file.writelines("conda activate ENV_NAME\n")
         file.writelines("time python template.py $1 $2 $3 $4")
     file.close()
     
