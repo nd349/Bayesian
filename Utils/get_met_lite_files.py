@@ -7,8 +7,8 @@ from netCDF4 import num2date,date2num
 from tqdm import tqdm
 import xarray as xr
 from datetime import datetime, timedelta
-from scipy.spatial import Delaunay
-from math import asin, atan2, cos, degrees, radians, sin
+# from scipy.spatial import Delaunay
+# from math import asin, atan2, cos, degrees, radians, sin
 from joblib import Parallel, delayed
 
 
